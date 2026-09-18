@@ -8,5 +8,6 @@ A tiny iPhone-friendly AI web app.
 3. Deploy.
 4. Open the deployed URL in Safari on iPhone.
 5. Tap Share > Add to Home Screen.
+6. Deployment refresh
 
 The API key stays server-side in the Vercel function.
