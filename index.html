@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Pocket Agent" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>Pocket Agent</title>
+  <style>
+    :root { color-scheme: dark; --bg:#070b14; --card:#11182a; --muted:#8e9ab5; --text:#f7f9ff; --accent:#6ea8fe; --user:#1c6be1; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; background:linear-gradient(180deg,#0b1020 0%,#070b14 55%,#05070d 100%); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,Arial,sans-serif; color:var(--text); }
+    body { min-height:100dvh; }
+    .app { max-width:720px; margin:auto; min-height:100dvh; display:flex; flex-direction:column; padding:calc(env(safe-area-inset-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
+    header { display:flex; align-items:center; gap:12px; padding:6px 4px 14px; }
+    .orb { width:42px; height:42px; border-radius:14px; background:radial-gradient(circle at 30% 25%,#b8d2ff,#6ea8fe 35%,#5c62ff 68%,#29305e); box-shadow:0 8px 30px rgba(80,120,255,.35); }
+    h1 { font-size:19px; margin:0; letter-spacing:-.3px; }
+    .sub { color:var(--muted); font-size:12px; margin-top:2px; }
+    .chat { flex:1; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:4px 0 16px; }
+    .msg { max-width:86%; padding:11px 13px; border-radius:18px; line-height:1.42; font-size:15px; white-space:pre-wrap; word-wrap:break-word; }
+    .assistant { align-self:flex-start; background:rgba(17,24,42,.9); border:1px solid rgba(255,255,255,.06); border-bottom-left-radius:6px; }
+    .user { align-self:flex-end; background:var(--user); border-bottom-right-radius:6px; }
+    .composer { position:sticky; bottom:0; display:flex; gap:8px; align-items:flex-end; background:rgba(5,7,13,.76); backdrop-filter:blur(18px); padding-top:10px; }
+    textarea { flex:1; resize:none; max-height:130px; min-height:48px; padding:13px 14px; border-radius:18px; border:1px solid rgba(255,255,255,.08); background:#101728; color:var(--text); font:inherit; outline:none; }
+    button { width:48px; height:48px; border:none; border-radius:16px; background:#f3f6ff; color:#0b1020; font-size:20px; font-weight:700; }
+    button:disabled { opacity:.45; }
+    .chips { display:flex; gap:7px; overflow:auto; padding:0 0 10px; }
+    .chip { flex:none; width:auto; height:auto; font-size:12px; padding:8px 11px; border-radius:999px; color:#dce7ff; background:#121c31; border:1px solid rgba(255,255,255,.07); }
+    .typing { opacity:.7; font-style:italic; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header><div class="orb"></div><div><h1>Pocket Agent</h1><div class="sub">Your simple AI assistant</div></div></header>
+    <div class="chips">
+      <button class="chip" data-prompt="Draft a short professional email for me about: ">Email</button>
+      <button class="chip" data-prompt="Summarise this clearly: ">Summarise</button>
+      <button class="chip" data-prompt="Help me plan this task step by step: ">Plan</button>
+    </div>
+    <main id="chat" class="chat">
+      <div class="msg assistant">Hi Stuart — I’m your Pocket Agent. Ask me to draft, summarise, plan, explain or organise something.</div>
+    </main>
+    <form id="form" class="composer">
+      <textarea id="input" rows="1" placeholder="Ask your agent…" autocomplete="off"></textarea>
+      <button id="send" aria-label="Send">↑</button>
+    </form>
+  </div>
+<script>
+const chat = document.getElementById('chat');
+const form = document.getElementById('form');
+const input = document.getElementById('input');
+const send = document.getElementById('send');
+const history = [];
+
+function addMessage(role, text, extra='') {
+  const el = document.createElement('div');
+  el.className = `msg ${role} ${extra}`;
+  el.textContent = text;
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+  return el;
+}
+
+function resize(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,130)+'px'; }
+input.addEventListener('input', resize);
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+});
+
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  input.value = c.dataset.prompt;
+  input.focus(); resize();
+}));
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const message = input.value.trim();
+  if (!message) return;
+  addMessage('user', message);
+  input.value=''; resize(); send.disabled=true;
+  const typing = addMessage('assistant','Thinking…','typing');
+  try {
+    const r = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ message, history }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Request failed');
+    typing.remove();
+    addMessage('assistant', data.reply);
+    history.push({ role:'user', content:message }, { role:'assistant', content:data.reply });
+    if (history.length > 20) history.splice(0, history.length - 20);
+  } catch (err) {
+    typing.textContent = 'Error: ' + err.message;
+    typing.classList.remove('typing');
+  } finally { send.disabled=false; input.focus(); }
+});
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body>
+</html>
